@@ -6,8 +6,68 @@ import {
 	UpdateContractPayload,
 } from "@concordium/web-sdk";
 import { Button, Link, Stack, TextField, Typography } from "@mui/material";
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useState } from "react";
 import { Buffer } from "buffer/";
+
+import MetadataUrlInput from "./MetadataUrlInput";
+
+const mint = async (formValues: {
+	index: bigint;
+	subindex: bigint;
+	metadataUrl: string;
+	tokenId: string;
+	quantity: number;
+}) => {
+	const provider = await detectConcordiumProvider();
+	const account = await provider.connect();
+
+	if (!account) {
+		return Promise.reject(new Error("Could not connect"));
+	}
+
+	const address = { index: formValues.index, subindex: formValues.subindex };
+	const paramJson = {
+		owner: {
+			Account: [account],
+		},
+		tokens: [
+			[
+				formValues.tokenId,
+				[
+					{
+						url: formValues.metadataUrl,
+						hash: "",
+					},
+					formValues.quantity.toString(),
+				],
+			],
+		],
+	};
+
+	const schemaBuffer = Buffer.from(
+		process.env.REACT_APP_CONTRACT_SCHEMA!,
+		"hex"
+	);
+	const serializedParams = serializeUpdateContractParameters(
+		process.env.REACT_APP_CONTRACT_NAME!,
+		"mint",
+		paramJson,
+		schemaBuffer
+	);
+	return provider.sendTransaction(
+		account!,
+		AccountTransactionType.Update,
+		{
+			address,
+			message: serializedParams,
+			receiveName: `${process.env.REACT_APP_CONTRACT_NAME!}.mint`,
+			amount: new CcdAmount(BigInt(0)),
+			maxContractExecutionEnergy: BigInt(9999),
+		} as UpdateContractPayload,
+		paramJson,
+		schemaBuffer.toString("base64")
+	);
+};
 
 export default function Mint() {
 	let [state, setState] = useState({
@@ -16,19 +76,39 @@ export default function Mint() {
 		hash: "",
 	});
 
+	const [formData, setFormData] = useState({
+		contractIndex: "",
+		contractSubIndex: "0",
+		metadataUrl: "",
+		tokenId: "01",
+		quantity: "1",
+	});
+
+	const handleChange = (name?: string, value?: string) => {
+		name &&
+			setFormData({
+				...formData,
+				[name]: value,
+			});
+	};
+
+	const handleChangeEvent = (event: ChangeEvent<HTMLInputElement>) => {
+		handleChange(event.target.name, event.target.value);
+	};
+
 	const submit = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		setState({ ...state, error: "", checking: true, hash: "" });
-		const formData = new FormData(event.currentTarget);
 
 		var formValues = {
-			index: BigInt(formData.get("contractIndex")?.toString() || "-1"),
-			subindex: BigInt(formData.get("contractSubindex")?.toString() || "-1"),
-			metadataUrl: formData.get("metadataUrl")?.toString() || "",
-			tokenId: formData.get("tokenId")?.toString() || "",
-			quantity: parseInt(formData.get("quantity")?.toString() || "-1"),
+			index: BigInt(formData.contractIndex || "-1"),
+			subindex: BigInt(formData.contractSubIndex || "-1"),
+			metadataUrl: formData.metadataUrl || "",
+			tokenId: formData.tokenId || "",
+			quantity: parseInt(formData.quantity || "-1"),
 		};
 
+		//form validations
 		if (!(formValues.index >= 0)) {
 			setState({ ...state, error: "Invalid Contract Index" });
 			return;
@@ -54,61 +134,13 @@ export default function Mint() {
 			return;
 		}
 
-		const provider = await detectConcordiumProvider();
-		const account = await provider.connect();
-
-		if (!account) {
-			alert("Please connect");
-		}
-
-		const address = { index: formValues.index, subindex: formValues.subindex };
-		const paramJson = {
-			owner: {
-				Account: [account],
-			},
-			tokens: [
-				[
-					formValues.tokenId,
-					[
-						{
-							url: formValues.metadataUrl,
-							hash: "",
-						},
-						formValues.quantity.toString(),
-					],
-				],
-			],
-		};
-
-		try {
-			const schemaBuffer = Buffer.from(
-				process.env.REACT_APP_CONTRACT_SCHEMA!,
-				"hex"
+		mint(formValues)
+			.then((txnHash) =>
+				setState({ checking: false, error: "", hash: txnHash })
+			)
+			.catch((err) =>
+				setState({ checking: false, error: err.message, hash: "" })
 			);
-			const serializedParams = serializeUpdateContractParameters(
-				process.env.REACT_APP_CONTRACT_NAME!,
-				"mint",
-				paramJson,
-				schemaBuffer
-			);
-			const txnHash = await provider.sendTransaction(
-				account!,
-				AccountTransactionType.Update,
-				{
-					address,
-					message: serializedParams,
-					receiveName: `${process.env.REACT_APP_CONTRACT_NAME!}.mint`,
-					amount: new CcdAmount(BigInt(0)),
-					maxContractExecutionEnergy: BigInt(9999),
-				} as UpdateContractPayload,
-				paramJson,
-				schemaBuffer.toString("base64")
-			);
-
-			setState({ checking: false, error: "", hash: txnHash });
-		} catch (error: any) {
-			setState({ checking: false, error: error.message || error, hash: "" });
-		}
 	};
 
 	return (
@@ -125,6 +157,8 @@ export default function Mint() {
 				variant="standard"
 				type={"number"}
 				disabled={state.checking}
+				value={formData.contractIndex}
+				onChange={handleChangeEvent}
 			/>
 			<TextField
 				id="contract-subindex"
@@ -133,14 +167,17 @@ export default function Mint() {
 				variant="standard"
 				type={"number"}
 				disabled={state.checking}
-				value={0}
+				value={formData.contractSubIndex}
+				onChange={handleChangeEvent}
 			/>
-			<TextField
+			<MetadataUrlInput
 				id="metadata-url"
 				name="metadataUrl"
 				label="Metadata Url"
 				variant="standard"
 				disabled={state.checking}
+				value={formData.metadataUrl}
+				onChange={handleChange}
 			/>
 			<TextField
 				id="token-id"
@@ -149,6 +186,8 @@ export default function Mint() {
 				variant="standard"
 				disabled={state.checking}
 				defaultValue="01"
+				value={formData.tokenId}
+				onChange={handleChangeEvent}
 			/>
 			<TextField
 				id="quantity"
@@ -158,6 +197,7 @@ export default function Mint() {
 				type="number"
 				disabled={state.checking}
 				defaultValue="1"
+				onChange={handleChangeEvent}
 			/>
 			{state.error && (
 				<Typography component="div" color="error">
