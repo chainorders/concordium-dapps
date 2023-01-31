@@ -1,0 +1,3 @@
+[submodule "mint-dapp-verified/deps/concordium-rust-sdk"]
+	path = mint-dapp-verified/deps/concordium-rust-sdk
+	url = git@github.com:Concordium/concordium-rust-sdk.git

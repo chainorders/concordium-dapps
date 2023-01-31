@@ -1,0 +1,40 @@
+services:
+  node:
+    image: concordium/testnet-node:5.1.3-0
+    ports:
+      - ${CONCORDIUM_NODE_PORT}:${CONCORDIUM_NODE_PORT}
+      - ${CONCORDIUM_NODE_PORT_GRPC_V1}:${CONCORDIUM_NODE_PORT_GRPC_V1}
+    working_dir: /
+    environment:
+      ## Refer https://github.com/Concordium/concordium-node/blob/main/VARIABLES.md#grpc
+      CONCORDIUM_NODE_GRPC2_LISTEN_ADDRESS: 0.0.0.0
+      CONCORDIUM_NODE_GRPC2_LISTEN_PORT: ${CONCORDIUM_NODE_PORT}
+      CONCORDIUM_NODE_RPC_SERVER_ADDR: 0.0.0.0
+      CONCORDIUM_NODE_RPC_SERVER_PORT: ${CONCORDIUM_NODE_PORT_GRPC_V1}
+      CONCORDIUM_NODE_LISTEN_ADDRESS: 0.0.0.0
+      CONCORDIUM_NODE_CONSENSUS_GENESIS_DATA_FILE: /testnet-genesis.dat
+      CONCORDIUM_NODE_CONFIG_DIR: "/node/concordium-node-data"
+      CONCORDIUM_NODE_DATA_DIR: "/node/concordium-node-config"
+      CONCORDIUM_NODE_CONNECTION_BOOTSTRAP_NODES: bootstrap.testnet.concordium.com:8888
+    volumes:
+      - /home/parv/work/concordium/nft-tutorials/dist/node/data:/node/concordium-node-data
+      - /home/parv/work/concordium/nft-tutorials/dist/node/config:/node/concordium-node-config
+    entrypoint:
+      - ./concordium-node
+  backend:
+    image: verifier-backend
+    build:
+      context: ./
+      dockerfile: ./backend/Dockerfile
+    ports:
+      - ${VERIFIER_BACKEND_PORT}:${VERIFIER_BACKEND_PORT}
+    environment:
+      PORT: ${VERIFIER_BACKEND_PORT}
+      NODE: http://node:${CONCORDIUM_NODE_PORT}
+      STATEMENT: '[{"type":"AttributeInRange","attributeTag":"dob","lower":"18000101","upper":"20091212"}]'
+      LOG_LEVEL: info
+      SIGN_KEY: ${SIGN_KEY}
+      VERIFY_KEY: ${VERIFY_KEY}
+    restart: always
+    depends_on:
+      - node
